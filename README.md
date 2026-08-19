@@ -1,5 +1,7 @@
 # Rigid Body Rotation Visualizer
 
+**Live demo:** file:///C:/Users/Dev%20Panchal/Downloads/index.html
+
 An interactive, browser-based tool for visualizing 3D rigid body rotations. It renders two coordinate frames — a **fixed reference frame** (blue, static) and a **rotatable body frame** (orange, attached to a small rigid box) — and lets you drive the body frame's orientation with three real-time sliders (roll, pitch, yaw). The corresponding **3×3 rotation matrix**, its determinant, an orthonormality check (‖RRᵀ − I‖), and the equivalent unit quaternion all update live as you move the sliders.
 
 Built for *Introduction to Robotics*.
@@ -48,17 +50,3 @@ R = Rz(ψ) · Ry(θ) · Rx(φ)
 ```
 
 This `R` is applied directly to the body frame's Three.js quaternion each frame, and is displayed in the sidebar as a 3×3 grid, so what you see rotating in the scene is provably the same `R` shown in the readout.
-
-## Project structure
-
-```
-rigid-body-rotation-viz/
-├── index.html   # entire app: scene, sliders, matrix math, UI (single file)
-└── README.md
-```
-
-## Submission checklist
-
-- [ ] Push this folder to a public (or unlisted-but-shared) GitHub repository.
-- [ ] Record a short screen capture showing: moving each slider, the body frame rotating in real time relative to the fixed frame, and the rotation matrix values updating live. Upload to YouTube as Public or Unlisted.
-- [ ] Paste the GitHub repo link and the YouTube link into Google Classroom.
