@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rigid Body Rotation Visualizer</title>
+<style>
+  :root{
+    --bg: #0b0e14;
+    --panel: #12161f;
+    --panel-border: #232a38;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --accent: #ff5c39;      /* body frame accent (warm) */
+    --accent2: #37b6ff;     /* fixed frame accent (cool) */
+    --mono: "SF Mono", "Roboto Mono", "Consolas", monospace;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+  #app {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    height: 100vh;
+    width: 100vw;
+  }
+  #sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--panel-border);
+    padding: 22px 22px 16px 22px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  header h1 {
+    font-size: 17px;
+    letter-spacing: 0.02em;
+    margin: 0 0 4px 0;
+    font-weight: 600;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+  .card {
+    background: #0e1119;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 16px 16px 14px 16px;
+  }
+  .card h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 12px 0;
+    font-weight: 600;
+  }
+
+  .slider-row { margin-bottom: 14px; }
+  .slider-row:last-child { margin-bottom: 0; }
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .slider-label .name { color: var(--text); font-weight: 500; }
+  .slider-label .val { font-family: var(--mono); color: var(--accent); font-size: 12.5px; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 3px;
+    background: #232a38;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid #0e1119;
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid #0e1119;
+  }
+
+  select, .seq-btns {
+    width: 100%;
+  }
+  select {
+    background: #0e1119;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+
+  .btn-row { display:flex; gap: 8px; margin-top: 12px; }
+  button.reset {
+    flex: 1;
+    background: #1a2030;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 9px 10px;
+    font-size: 12.5px;
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: background 0.15s ease;
+  }
+  button.reset:hover { background: #232b3f; }
+
+  .matrix-wrap {
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  table.matrix {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  table.matrix td {
+    padding: 6px 4px;
+    text-align: center;
+    color: var(--accent);
+    border-bottom: 1px solid #1c2230;
+  }
+  table.matrix tr:last-child td { border-bottom: none; }
+  .matrix-brackets {
+    display: flex;
+    align-items: stretch;
+  }
+  .bracket {
+    width: 6px;
+    border: 2px solid var(--muted);
+    border-right: none;
+  }
+  .bracket.right { border-right: 2px solid var(--muted); border-left: none; }
+
+  .quat-line, .euler-line {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+    line-height: 1.6;
+    word-break: break-word;
+  }
+  .quat-line b, .euler-line b { color: var(--text); }
+
+  #canvas-wrap { position: relative; }
+  #scene { width: 100%; height: 100%; display: block; }
+
+  #hud {
+    position: absolute;
+    top: 16px; left: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: rgba(11,14,20,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    pointer-events: none;
+  }
+  #hud b { color: var(--text); }
+
+  footer.credit {
+    margin-top: auto;
+    font-size: 11px;
+    color: #4a5266;
+    padding-top: 8px;
+    border-top: 1px solid var(--panel-border);
+  }
+
+  @media (max-width: 860px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    #sidebar { border-right: none; border-bottom: 1px solid var(--panel-border); max-height: 52vh; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <header>
+      <h1>Rigid Body Rotation Visualizer</h1>
+      <p>Drag the sliders to rotate the body frame relative to the fixed world frame. The rotation matrix updates live below.</p>
+      <div class="legend" style="margin-top:10px;">
+        <span><i class="dot" style="background:var(--accent2)"></i>Fixed frame (X<sub>w</sub>Y<sub>w</sub>Z<sub>w</sub>)</span>
+        <span><i class="dot" style="background:var(--accent)"></i>Body frame (X<sub>b</sub>Y<sub>b</sub>Z<sub>b</sub>)</span>
+      </div>
+    </header>
+
+    <div class="card">
+      <h2>Euler Angles (deg)</h2>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="name">Roll &nbsp;(φ, about X)</span>
+          <span class="val" id="rollVal">0.0°</span>
+        </div>
+        <input type="range" id="roll" min="-180" max="180" step="0.5" value="0">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="name">Pitch &nbsp;(θ, about Y)</span>
+          <span class="val" id="pitchVal">0.0°</span>
+        </div>
+        <input type="range" id="pitch" min="-180" max="180" step="0.5" value="0">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="name">Yaw &nbsp;(ψ, about Z)</span>
+          <span class="val" id="yawVal">0.0°</span>
+        </div>
+        <input type="range" id="yaw" min="-180" max="180" step="0.5" value="0">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label"><span class="name">Rotation sequence</span></div>
+        <select id="seq">
+          <option value="ZYX" selected>Intrinsic Z-Y-X (yaw-pitch-roll)</option>
+          <option value="XYZ">Intrinsic X-Y-Z (roll-pitch-yaw)</option>
+          <option value="ZXY">Intrinsic Z-X-Y</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="reset" id="resetBtn">Reset to identity</button>
+        <button class="reset" id="spinBtn">Toggle auto-spin</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Rotation Matrix &nbsp;R = R<sub>seq</sub>(φ,θ,ψ)</h2>
+      <div class="matrix-wrap">
+        <div class="matrix-brackets">
+          <div class="bracket"></div>
+          <table class="matrix" id="matrixTable"></table>
+          <div class="bracket right"></div>
+        </div>
+      </div>
+      <div class="euler-line" id="detLine"><b>det(R)</b> = 1.000&nbsp;&nbsp;<b>R·Rᵀ=I</b> ✓ orthonormal</div>
+      <div class="quat-line" id="quatLine"></div>
+    </div>
+
+    <footer class="credit">Three.js WebGL scene · orbit with mouse to inspect from any angle</footer>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="scene"></canvas>
+    <div id="hud">Left-drag: orbit camera &nbsp;|&nbsp; scroll: zoom &nbsp;|&nbsp; right-drag: pan</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+  // ---------- Three.js scene setup ----------
+  const canvas = document.getElementById('scene');
+  const wrap = document.getElementById('canvas-wrap');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setClearColor(0x0b0e14, 1);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(4.2, 3.2, 5.2);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.target.set(0, 0, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+  dl.position.set(5, 8, 6);
+  scene.add(dl);
+
+  // Ground grid for spatial reference
+  const grid = new THREE.GridHelper(6, 24, 0x2a3244, 0x1a2030);
+  grid.position.y = -1.6;
+  scene.add(grid);
+
+  const ACCENT_FIXED = 0x37b6ff;
+  const ACCENT_BODY  = 0xff5c39;
+
+  // ---------- Helper: build a labeled triad of arrows ----------
+  function buildTriad(colorX, colorY, colorZ, opacity, len) {
+    const group = new THREE.Group();
+    const dirs = [
+      { dir: new THREE.Vector3(1,0,0), color: colorX, label: 'X' },
+      { dir: new THREE.Vector3(0,1,0), color: colorY, label: 'Y' },
+      { dir: new THREE.Vector3(0,0,1), color: colorZ, label: 'Z' },
+    ];
+    dirs.forEach(d => {
+      const arrow = new THREE.ArrowHelper(d.dir, new THREE.Vector3(0,0,0), len, d.color, len*0.18, len*0.09);
+      arrow.line.material.transparent = true;
+      arrow.line.material.opacity = opacity;
+      arrow.cone.material.transparent = true;
+      arrow.cone.material.opacity = opacity;
+      arrow.line.material.linewidth = 2;
+      group.add(arrow);
+
+      // sprite label
+      const label = makeTextSprite(d.label, '#' + d.color.toString(16).padStart(6,'0'));
+      label.position.copy(d.dir).multiplyScalar(len * 1.18);
+      group.add(label);
+    });
+    return group;
+  }
+
+  function makeTextSprite(text, colorHex){
+    const cvs = document.createElement('canvas');
+    const size = 128;
+    cvs.width = size; cvs.height = size;
+    const ctx = cvs.getContext('2d');
+    ctx.font = 'bold 72px "SF Mono", monospace';
+    ctx.fillStyle = colorHex;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, size/2, size/2);
+    const tex = new THREE.CanvasTexture(cvs);
+    tex.minFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(0.35, 0.35, 0.35);
+    return sprite;
+  }
+
+  // Fixed (world) reference frame — static, cool color, slightly translucent
+  const fixedTriad = buildTriad(ACCENT_FIXED, ACCENT_FIXED, ACCENT_FIXED, 0.55, 2.0);
+  scene.add(fixedTriad);
+
+  // Body frame — rotates live, warm color, plus a small cube "rigid body" to make rotation legible
+  const bodyGroup = new THREE.Group();
+  scene.add(bodyGroup);
+
+  const bodyTriad = buildTriad(ACCENT_BODY, ACCENT_BODY, ACCENT_BODY, 0.95, 1.6);
+  bodyGroup.add(bodyTriad);
+
+  const boxGeo = new THREE.BoxGeometry(0.9, 0.55, 1.3);
+  const edges = new THREE.EdgesGeometry(boxGeo);
+  const boxMat = new THREE.MeshStandardMaterial({
+    color: 0x1c2333, transparent: true, opacity: 0.55, roughness: 0.5, metalness: 0.1
+  });
+  const box = new THREE.Mesh(boxGeo, boxMat);
+  bodyGroup.add(box);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xff9a80, transparent: true, opacity: 0.7 });
+  const boxEdges = new THREE.LineSegments(edges, lineMat);
+  bodyGroup.add(boxEdges);
+
+  // ---------- Resize handling ----------
+  function resize() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- Rotation math ----------
+  const rollEl = document.getElementById('roll');
+  const pitchEl = document.getElementById('pitch');
+  const yawEl = document.getElementById('yaw');
+  const rollVal = document.getElementById('rollVal');
+  const pitchVal = document.getElementById('pitchVal');
+  const yawVal = document.getElementById('yawVal');
+  const seqEl = document.getElementById('seq');
+  const matrixTable = document.getElementById('matrixTable');
+  const detLine = document.getElementById('detLine');
+  const quatLine = document.getElementById('quatLine');
+
+  function deg2rad(d){ return d * Math.PI / 180; }
+
+  function Rx(a){
+    const c = Math.cos(a), s = Math.sin(a);
+    return [[1,0,0],[0,c,-s],[0,s,c]];
+  }
+  function Ry(a){
+    const c = Math.cos(a), s = Math.sin(a);
+    return [[c,0,s],[0,1,0],[-s,0,c]];
+  }
+  function Rz(a){
+    const c = Math.cos(a), s = Math.sin(a);
+    return [[c,-s,0],[s,c,0],[0,0,1]];
+  }
+  function matMul(A, B){
+    const R = [[0,0,0],[0,0,0],[0,0,0]];
+    for (let i=0;i<3;i++)
+      for (let j=0;j<3;j++)
+        for (let k=0;k<3;k++)
+          R[i][j] += A[i][k]*B[k][j];
+    return R;
+  }
+  function det3(m){
+    return (
+      m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) -
+      m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) +
+      m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0])
+    );
+  }
+
+  // Compute R for chosen intrinsic sequence given roll(X) pitch(Y) yaw(Z) angles in rad
+  function computeR(roll, pitch, yaw, seq){
+    const rx = Rx(roll), ry = Ry(pitch), rz = Rz(yaw);
+    switch(seq){
+      case 'XYZ': return matMul(matMul(rx, ry), rz); // intrinsic X then Y then Z => R = Rx*Ry*Rz
+      case 'ZXY': return matMul(matMul(rz, rx), ry);
+      case 'ZYX':
+      default:    return matMul(matMul(rz, ry), rx); // classic yaw-pitch-roll (aerospace / robotics)
+    }
+  }
+
+  function matrixToQuaternion(m){
+    // m is row-major 3x3 array-of-arrays
+    const trace = m[0][0] + m[1][1] + m[2][2];
+    let qw, qx, qy, qz;
+    if (trace > 0) {
+      const s = 0.5 / Math.sqrt(trace + 1.0);
+      qw = 0.25 / s;
+      qx = (m[2][1] - m[1][2]) * s;
+      qy = (m[0][2] - m[2][0]) * s;
+      qz = (m[1][0] - m[0][1]) * s;
+    } else if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+      const s = 2.0 * Math.sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]);
+      qw = (m[2][1] - m[1][2]) / s;
+      qx = 0.25 * s;
+      qy = (m[0][1] + m[1][0]) / s;
+      qz = (m[0][2] + m[2][0]) / s;
+    } else if (m[1][1] > m[2][2]) {
+      const s = 2.0 * Math.sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]);
+      qw = (m[0][2] - m[2][0]) / s;
+      qx = (m[0][1] + m[1][0]) / s;
+      qy = 0.25 * s;
+      qz = (m[1][2] + m[2][1]) / s;
+    } else {
+      const s = 2.0 * Math.sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]);
+      qw = (m[1][0] - m[0][1]) / s;
+      qx = (m[0][2] + m[2][0]) / s;
+      qy = (m[1][2] + m[2][1]) / s;
+      qz = 0.25 * s;
+    }
+    return {w:qw, x:qx, y:qy, z:qz};
+  }
+
+  function renderMatrix(m){
+    let html = '';
+    for (let i=0;i<3;i++){
+      html += '<tr>';
+      for (let j=0;j<3;j++){
+        html += `<td>${m[i][j].toFixed(3)}</td>`;
+      }
+      html += '</tr>';
+    }
+    matrixTable.innerHTML = html;
+  }
+
+  function frobeniusOrthoError(m){
+    // ||R Rt - I||_F  as a sanity indicator (should be ~0)
+    const mt = [[m[0][0],m[1][0],m[2][0]],[m[0][1],m[1][1],m[2][1]],[m[0][2],m[1][2],m[2][2]]];
+    const rrt = matMul(m, mt);
+    let sum = 0;
+    for (let i=0;i<3;i++)
+      for (let j=0;j<3;j++){
+        const target = (i===j)?1:0;
+        sum += (rrt[i][j]-target)*(rrt[i][j]-target);
+      }
+    return Math.sqrt(sum);
+  }
+
+  let autoSpin = false;
+
+  function update(){
+    const rollDeg = parseFloat(rollEl.value);
+    const pitchDeg = parseFloat(pitchEl.value);
+    const yawDeg = parseFloat(yawEl.value);
+
+    rollVal.textContent = rollDeg.toFixed(1) + '°';
+    pitchVal.textContent = pitchDeg.toFixed(1) + '°';
+    yawVal.textContent = yawDeg.toFixed(1) + '°';
+
+    const roll = deg2rad(rollDeg), pitch = deg2rad(pitchDeg), yaw = deg2rad(yawDeg);
+    const seq = seqEl.value;
+    const R = computeR(roll, pitch, yaw, seq);
+
+    renderMatrix(R);
+
+    const d = det3(R);
+    const orthoErr = frobeniusOrthoError(R);
+    const ok = Math.abs(d-1) < 1e-3 && orthoErr < 1e-3;
+    detLine.innerHTML = `<b>det(R)</b> = ${d.toFixed(4)} &nbsp;&nbsp; <b>‖RRᵀ−I‖</b> = ${orthoErr.toExponential(1)} ${ok ? '✓ orthonormal' : ''}`;
+
+    const q = matrixToQuaternion(R);
+    quatLine.innerHTML = `<b>Quaternion</b> [w,x,y,z] = [${q.w.toFixed(3)}, ${q.x.toFixed(3)}, ${q.y.toFixed(3)}, ${q.z.toFixed(3)}]`;
+
+    // Apply to Three.js body frame.
+    // Three.js Matrix4 is column-major internally but .set() takes ROW-major args, matching our R directly.
+    const m4 = new THREE.Matrix4();
+    m4.set(
+      R[0][0], R[0][1], R[0][2], 0,
+      R[1][0], R[1][1], R[1][2], 0,
+      R[2][0], R[2][1], R[2][2], 0,
+      0, 0, 0, 1
+    );
+    bodyGroup.quaternion.setFromRotationMatrix(m4);
+  }
+
+  [rollEl, pitchEl, yawEl, seqEl].forEach(el => el.addEventListener('input', update));
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    rollEl.value = 0; pitchEl.value = 0; yawEl.value = 0;
+    update();
+  });
+
+  document.getElementById('spinBtn').addEventListener('click', (e) => {
+    autoSpin = !autoSpin;
+    e.target.style.background = autoSpin ? '#2a3550' : '#1a2030';
+  });
+
+  update();
+
+  // ---------- Animation loop ----------
+  let t = 0;
+  function animate(){
+    requestAnimationFrame(animate);
+    if (autoSpin){
+      t += 0.006;
+      yawEl.value = (Math.sin(t) * 180).toFixed(1);
+      pitchEl.value = (Math.sin(t*0.7) * 60).toFixed(1);
+      rollEl.value = (Math.sin(t*1.3) * 90).toFixed(1);
+      update();
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>
